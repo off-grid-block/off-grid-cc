@@ -1,7 +1,7 @@
 package main
 
 
-//not forked
+//not forked, offline edit 1
 //besides the normal packages, we need to import shim and peer
 //which can be found within fabric (git)
 import (
