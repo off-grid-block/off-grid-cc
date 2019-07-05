@@ -51,6 +51,8 @@ func (v *ourChain) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
 		//return v.setentry(stub, arguments)
 	} else if function == "readEntry" {
 		return v.readEntry(stub, arguments)
+	} else if function == "deleteEntry" {
+		return v.deleteEntry(stub, arguments)	
 	} else if function == "searchByOwner" {
 		return v.searchByOwner(stub, arguments)
 	}
