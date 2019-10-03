@@ -127,6 +127,12 @@ func (v *ourChain) initEntry(stub shim.ChaincodeStubInterface, arguments []strin
 	value := []byte{0x00}
 	stub.PutState(indicesKey, value)
 
+ 	//register event
+	err = stub.SetEvent("initEvent", []byte{})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
 	//return success
 	fmt.Println("end initiation")
 	return shim.Success(nil)
@@ -136,7 +142,8 @@ func (v *ourChain) initEntry(stub shim.ChaincodeStubInterface, arguments []strin
 func (v *ourChain) readEntry(stub shim.ChaincodeStubInterface, arguments []string) peer.Response {
 	var id, jsonResponse string
 	var err error
-
+	
+	fmt.Println("reached")
 	//check for length
 	if len(arguments) != 1 {
 		return shim.Error("Incorrect number of arguments. expecting ID")
@@ -185,6 +192,13 @@ func (v *ourChain) deleteEntry(stub shim.ChaincodeStubInterface, arguments []str
 	if err != nil {
 		return shim.Error("Failed to delete the state")
 	}
+
+	//register event
+	err = stub.SetEvent("deleteEvent", []byte{})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
 
 	return shim.Success(nil)
 }
