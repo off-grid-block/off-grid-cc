@@ -94,6 +94,11 @@ func (v *ourChain) initEntry(stub shim.ChaincodeStubInterface, arguments []strin
 	owner := arguments[4]
 	updated, err := strconv.Atoi(arguments[5])
 
+	//make sure that updated is a number, 0 or 1
+	if (updated != 0 && updated != 1) {
+		return shim.Error("Invalid entry for updated")
+	}
+
 	//check if entry already exists
 	entryBytes, err := stub.GetState(id)
 	if err != nil {
