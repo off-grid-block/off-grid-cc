@@ -1,0 +1,8 @@
+{
+	"index":{
+		"fields":["docType","pollID"]
+	},
+	"ddoc":"indexPollDoc",
+	"name":"indexPoll",
+	"type":"json"
+}
