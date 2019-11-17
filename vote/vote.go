@@ -80,9 +80,9 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		}
 	}
 
-	pollID := args[1]
-	voterID := args[2]
-	voteHash := args[3]
+	pollID := args[0]
+	voterID := args[1]
+	voteHash := args[2]
 	// unique key of the vote data consists of the poll ID + the voter ID
 	voteKey := pollID + voterID
 
