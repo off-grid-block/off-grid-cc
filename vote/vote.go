@@ -56,7 +56,7 @@ func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response 
 	case "queryVotesByVoter":							// parametrized rich query w/ voter ID
 		return vc.queryVotesByVoter(stub, args)			
 	case "queryVotes":									// ad hoc rich query
-		return vc.queryVotesByPoll(stub, args)
+		return vc.queryVotes(stub, args)
 	}
 
 	fmt.Println("invoke did not find fn: " + fn)
@@ -69,7 +69,7 @@ func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response 
 func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
 	if len(args) != 3 {
-		return shim.Error("Incorrect number of arguments. Expecting 4")
+		return shim.Error("Incorrect number of arguments. Expecting 3")
 	}
 
 	// ==== Input sanitation ====
@@ -178,7 +178,7 @@ func (vc *VoteChaincode) changeVote(stub shim.ChaincodeStubInterface, args []str
 	}
 
 	fmt.Println("- end change vote (success)")
-	return shim.Success(nil)
+	return shim.Success(changedVoteJSONasBytes)
 }
 
 // ===========================================================================================
@@ -255,7 +255,7 @@ func (vc *VoteChaincode) queryVotesByPoll(stub shim.ChaincodeStubInterface, args
 	}
 
 	pollID := strings.ToLower(args[0])
-	queryString := fmt.Sprintf("{\"selector\":{\"docType\":\"vote\",\"pollID\":\"%s\"", pollID)
+	queryString := fmt.Sprintf("{\"selector\":{\"docType\":\"vote\",\"pollID\":\"%s\"}}", pollID)
 	queryResults, err := getQueryResultForQueryString(stub, queryString)
 	if err != nil {
 		return shim.Error(err.Error())
@@ -275,7 +275,7 @@ func (vc *VoteChaincode) queryVotesByVoter(stub shim.ChaincodeStubInterface, arg
 	}
 
 	voterID := strings.ToLower(args[0])
-	queryString := fmt.Sprintf("{\"selector\":{\"docType\":\"vote\",\"voterID\":\"%s\"", voterID)
+	queryString := fmt.Sprintf("{\"selector\":{\"docType\":\"vote\",\"voterID\":\"%s\"}}", voterID)
 	queryResults, err := getQueryResultForQueryString(stub, queryString)
 	if err != nil {
 		return shim.Error(err.Error())
