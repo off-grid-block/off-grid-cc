@@ -19,9 +19,17 @@ type vote struct {
 	ObjectType 	string 	`json:"docType"`
 	PollID		string 	`json:"pollID"`
 	VoterID		string 	`json:"voterID"`
-	VoteHash 	string 	`json:"voteHash"`	// hash(ipfsHash + salt)
+	VoterSex 	string 	`json:"voterID"`
+	VoterAge	int 	`json:"voterID"`
 }
 
+type votePrivateDetails struct {
+	ObjectType 	string 	`json:"docType"`
+	PollID		string 	`json:"pollID"`
+	VoterID		string 	`json:"voterID"`
+	VoteHash 	string 	`json:"voteHash"`	// hash(ipfsHash + salt)
+
+}
 
 func main() {
 	err := shim.Start(new(VoteChaincode))
