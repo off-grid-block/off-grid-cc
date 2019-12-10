@@ -19,8 +19,8 @@ type vote struct {
 	ObjectType 	string 	`json:"docType"`
 	PollID		string 	`json:"pollID"`
 	VoterID		string 	`json:"voterID"`
-	VoterSex 	string 	`json:"voterID"`
-	VoterAge	int 	`json:"voterID"`
+	VoterSex 	string 	`json:"voterSex"`
+	VoterAge	int 	`json:"voterAge"`
 }
 
 type votePrivateDetails struct {
@@ -76,42 +76,99 @@ func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response 
 // ============================================================
 func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
-	if len(args) != 3 {
-		return shim.Error("Incorrect number of arguments. Expecting 3")
+
+	type voteTransientInput struct {
+		PollID		string 	`json:"pollID"`
+		VoterID		string 	`json:"voterID"`
+		VoterSex 	string 	`json:"voterSex"`
+		VoterAge	int 	`json:"voterAge"`
+		VoteHash 	string 	`json:"voteHash"`
 	}
 
-	// ==== Input sanitation ====
 	fmt.Println("- start init vote")
-	for _, arg := range args {
-		if len(arg) == 0 {
-			return shim.Error("Arguments must be non-empty strings")
-		}
+
+
+	if len(args) != 0 {
+		return shim.Error("Private data should be passed in transient map.")
 	}
 
-	pollID := args[0]
-	voterID := args[1]
-	voteHash := args[2]
-	// unique key of the vote data consists of the poll ID + the voter ID
-	voteKey := pollID + voterID
+	transMap, err := stub.GetTransient()
+	if err != nil {
+		return shim.Error("Error getting transient: " + err.Error())
+	}
 
-	// ==== Check if the vote already exists ====
-	voteAsBytes, err := stub.GetState(voteKey)
+	voteJsonBytes, success := transMap["vote"]
+	if !success {
+		return shim.Error("vote must be a key in the transient map")
+	}
+
+	if len(voteJsonBytes) == 0 {
+		return shim.Error("vote value in transient map cannot be empty JSON string")
+	}
+
+	var voteInput voteTransientInput
+	err = json.Unmarshal(voteJsonBytes, &voteInput)
+	if err != nil {
+		return shim.Error("failed to decode JSON of: " + string(voteJsonBytes))
+	}
+
+	if len(voteInput.PollID) == 0 {
+		return shim.Error("poll ID field must be a non-empty string")
+	} 
+
+	if len(voteInput.VoterID) == 0 {
+		return shim.Error("voter ID field must be a non-empty string")
+	} 
+
+	if voteInput.VoterAge <= 0 {
+		return shim.Error("age field must be > 0")
+	} 
+
+	if len(voteInput.VoterSex) == 0 {
+		return shim.Error("sex field must be a non-empty string")
+	} 
+
+	if len(voteInput.VoteHash) == 0 {
+		return shim.Error("vote hash field must be a non-empty string")
+	} 
+
+	existingVoteAsBytes, err := stub.GetPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID)
 	if err != nil {
 		return shim.Error("Failed to get vote: " + err.Error())
-	} else if voteAsBytes != nil {
-		return shim.Error("This vote already exists: " + voteKey)
+	} else if existingVoteAsBytes != nil {
+		fmt.Println("This vote already exists: " + voteInput.PollID + voteInput.VoterID)
+		return shim.Error("This vote already exists: " + voteInput.PollID + voteInput.VoterID)
 	}
 
-	// ==== Create vote object and marshal to JSON ====
-	objectType := "vote"
-	vote := &vote{objectType, pollID, voterID, voteHash}
+	vote := &vote{
+		ObjectType: "vote",
+		PollID: voteInput.PollID,
+		VoterID: voteInput.VoterID,
+		VoterAge: voteInput.VoterAge,
+		VoterSex: voteInput.VoterSex,
+	}
 	voteJSONasBytes, err := json.Marshal(vote)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
 
-	// ==== Put vote to state ====
-	err = stub.PutState(voteKey, voteJSONasBytes)
+	err = stub.PutPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID, voteJSONasBytes)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	votePrivateDetails := &votePrivateDetails {
+		ObjectType: "votePrivateDetails",
+		PollID: voteInput.PollID,
+		VoterID: voteInput.VoterID,
+		VoteHash: voteInput.VoteHash,
+	}
+	votePrivateDetailsBytes, err := json.Marshal(votePrivateDetails)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	err = stub.PutPrivateData("collectionVotePrivateDetails", voteInput.PollID + voteInput.VoterID, votePrivateDetailsBytes)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -148,45 +205,46 @@ func (vc *VoteChaincode) getVote(stub shim.ChaincodeStubInterface, args []string
 
 func (vc *VoteChaincode) changeVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
-	if len(args) != 2 {
-		return shim.Error("Incorrect number of arguments. Expecting vote key and new vote hash")		
-	}
+	// if len(args) != 2 {
+	// 	return shim.Error("Incorrect number of arguments. Expecting vote key and new vote hash")		
+	// }
 
-	fmt.Println("- begin change vote")
+	// fmt.Println("- begin change vote")
 
-	voteKey := args[0]
-	newVoteHash := args[1]
+	// voteKey := args[0]
+	// newVoteHash := args[1]
 
-	// ==== retrieve the old vote ====
-	voteAsBytes, err := stub.GetState(voteKey)
-	if err != nil {
-		return shim.Error("{\"Error\":\"Failed to get state for " + voteKey + "\"}")
-	} else if voteAsBytes == nil {
-		return shim.Error("{\"Error\":\"Vote does not exist: " + voteKey + "\"}")
-	}
+	// // ==== retrieve the old vote ====
+	// voteAsBytes, err := stub.GetState(voteKey)
+	// if err != nil {
+	// 	return shim.Error("{\"Error\":\"Failed to get state for " + voteKey + "\"}")
+	// } else if voteAsBytes == nil {
+	// 	return shim.Error("{\"Error\":\"Vote does not exist: " + voteKey + "\"}")
+	// }
 
-	// Unmarshal old vote into a new vote object
-	changedVote := vote{}
-	err = json.Unmarshal(voteAsBytes, &changedVote)
-	if err != nil {
-		return shim.Error(err.Error())
-	}
+	// // Unmarshal old vote into a new vote object
+	// changedVote := vote{}
+	// err = json.Unmarshal(voteAsBytes, &changedVote)
+	// if err != nil {
+	// 	return shim.Error(err.Error())
+	// }
 
-	// update new vote object's hash to new hash
-	changedVote.VoteHash = newVoteHash
+	// // update new vote object's hash to new hash
+	// changedVote.VoteHash = newVoteHash
 
-	changedVoteJSONasBytes, err := json.Marshal(changedVote)
-	if err != nil {
-		return shim.Error(err.Error())
-	}
+	// changedVoteJSONasBytes, err := json.Marshal(changedVote)
+	// if err != nil {
+	// 	return shim.Error(err.Error())
+	// }
 
-	err = stub.PutState(voteKey, changedVoteJSONasBytes)
-	if err != nil {
-		return shim.Error(err.Error())
-	}
+	// err = stub.PutState(voteKey, changedVoteJSONasBytes)
+	// if err != nil {
+	// 	return shim.Error(err.Error())
+	// }
 
-	fmt.Println("- end change vote (success)")
-	return shim.Success(changedVoteJSONasBytes)
+	// fmt.Println("- end change vote (success)")
+	// return shim.Success(changedVoteJSONasBytes)
+	return shim.Success(nil)
 }
 
 // ===========================================================================================
