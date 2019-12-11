@@ -27,8 +27,9 @@ type votePrivateDetails struct {
 	ObjectType 	string 	`json:"docType"`
 	PollID		string 	`json:"pollID"`
 	VoterID		string 	`json:"voterID"`
+	Salt 		string 	`json:"salt"`
 	VoteHash 	string 	`json:"voteHash"`
-	Salt 		int 	`json:"salt"`
+	SaltHash	string  `json:"saltHash"`
 
 }
 
@@ -83,8 +84,9 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		VoterID		string 	`json:"voterID"`
 		VoterSex 	string 	`json:"voterSex"`
 		VoterAge	int 	`json:"voterAge"`
+		Salt 		string 	`json:"salt"`
 		VoteHash 	string 	`json:"voteHash"`
-		Salt 		int 	`json:"salt"`
+		SaltHash 	string 	`json:"saltHash"`
 	}
 
 	fmt.Println("- start init vote")
@@ -132,13 +134,17 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		return shim.Error("sex field must be a non-empty string")
 	} 
 
+	if voteInput.Salt <= 0 {
+		return shim.Error("salt must be > 0")
+	}
+
 	if len(voteInput.VoteHash) == 0 {
 		return shim.Error("vote hash field must be a non-empty string")
 	} 
 
-	if voteInput.VoterAge <= 0 {
-		return shim.Error("salt must be > 0")
-	}
+	if len(voteInput.SaltHash) == 0 {
+		return shim.Error("salted vote hash field must be a non-empty string")
+	} 
 
 	existingVoteAsBytes, err := stub.GetPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID)
 	if err != nil {
@@ -169,8 +175,9 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		ObjectType: "votePrivateDetails",
 		PollID: voteInput.PollID,
 		VoterID: voteInput.VoterID,
-		VoteHash: voteInput.VoteHash,
 		Salt: voteInput.Salt,
+		VoteHash: voteInput.VoteHash,
+		SaltHash: voteInput.SaltHash,
 	}
 	votePrivateDetailsBytes, err := json.Marshal(votePrivateDetails)
 	if err != nil {
