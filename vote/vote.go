@@ -27,7 +27,8 @@ type votePrivateDetails struct {
 	ObjectType 	string 	`json:"docType"`
 	PollID		string 	`json:"pollID"`
 	VoterID		string 	`json:"voterID"`
-	VoteHash 	string 	`json:"voteHash"`	// hash(ipfsHash + salt)
+	VoteHash 	string 	`json:"voteHash"`
+	Salt 		int 	`json:"salt"`
 
 }
 
@@ -83,6 +84,7 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		VoterSex 	string 	`json:"voterSex"`
 		VoterAge	int 	`json:"voterAge"`
 		VoteHash 	string 	`json:"voteHash"`
+		Salt 		int 	`json:"salt"`
 	}
 
 	fmt.Println("- start init vote")
@@ -112,6 +114,8 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		return shim.Error("failed to decode JSON of: " + string(voteJsonBytes))
 	}
 
+	// input sanitation
+
 	if len(voteInput.PollID) == 0 {
 		return shim.Error("poll ID field must be a non-empty string")
 	} 
@@ -122,7 +126,7 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 
 	if voteInput.VoterAge <= 0 {
 		return shim.Error("age field must be > 0")
-	} 
+	}
 
 	if len(voteInput.VoterSex) == 0 {
 		return shim.Error("sex field must be a non-empty string")
@@ -131,6 +135,10 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 	if len(voteInput.VoteHash) == 0 {
 		return shim.Error("vote hash field must be a non-empty string")
 	} 
+
+	if voteInput.VoterAge <= 0 {
+		return shim.Error("salt must be > 0")
+	}
 
 	existingVoteAsBytes, err := stub.GetPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID)
 	if err != nil {
@@ -162,6 +170,7 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		PollID: voteInput.PollID,
 		VoterID: voteInput.VoterID,
 		VoteHash: voteInput.VoteHash,
+		Salt: voteInput.Salt,
 	}
 	votePrivateDetailsBytes, err := json.Marshal(votePrivateDetails)
 	if err != nil {
@@ -177,9 +186,9 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 	return shim.Success(nil)
 }
 
-// =================================================
-// getVote - retrieve vote hash from chaincode state
-// =================================================
+// =====================================================
+// getVote - retrieve vote metadata from chaincode state
+// =====================================================
 
 func (vc *VoteChaincode) getVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 	if len(args) != 1 {
@@ -187,13 +196,32 @@ func (vc *VoteChaincode) getVote(stub shim.ChaincodeStubInterface, args []string
 	}
 
 	voteKey := args[0]
-
 	// ==== retrieve the vote ====
-	voteAsBytes, err := stub.GetState(voteKey)
+	voteAsBytes, err := stub.GetPrivateData("collectionVote", voteKey)
 	if err != nil {
 		return shim.Error("{\"Error\":\"Failed to get state for " + voteKey + "\"}")
 	} else if voteAsBytes == nil {
 		return shim.Error("{\"Error\":\"Vote does not exist: " + voteKey + "\"}")
+	}
+
+	return shim.Success(voteAsBytes)
+}
+
+// ===============================================================
+// getVotePrivateDetails - retrieve vote hash from chaincode state
+// ===============================================================
+
+func (vc *VoteChaincode) getVotePrivateDetails(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	if len(args) != 1 {
+		return shim.Error("Incorrect number of arguments. Expecting vote key to query")
+	}
+
+	voteKey := args[0]
+	voteAsBytes, err := stub.GetPrivateData("collectionVotePrivateDetails", voteKey)
+	if err != nil {
+		return shim.Error("{\"Error\":\"Failed to get private details for " + voteKey + "\"}")
+	} else if voteAsBytes == nil {
+		return shim.Error("{\"Error\":\"Vote private details do not exist: " + voteKey + "\"}")
 	}
 
 	return shim.Success(voteAsBytes)
@@ -292,7 +320,7 @@ func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString 
 
 	fmt.Printf("- getQueryResultForQueryString queryString:\n%s\n", queryString)
 
-	resultsIterator, err := stub.GetQueryResult(queryString)
+	resultsIterator, err := stub.GetPrivateDataQueryResult("collectionVote", queryString)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +343,6 @@ func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString 
 // the passed poll ID, executes the query, and returns the result set.
 // =========================================================================================
 func (vc *VoteChaincode) queryVotesByPoll(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-
 	if len(args) != 1 {
 		return shim.Error("Incorrect number of arguments. Expecting 1: Poll ID")
 	}
@@ -335,7 +362,6 @@ func (vc *VoteChaincode) queryVotesByPoll(stub shim.ChaincodeStubInterface, args
 // the passed voter ID, executes the query, and returns the result set.
 // =========================================================================================	
 func (vc *VoteChaincode) queryVotesByVoter(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-
 	if len(args) != 1 {
 		return shim.Error("Incorrect number of arguments. Expecting 1: Voter ID")
 	}
