@@ -29,7 +29,6 @@ type votePrivateDetails struct {
 	VoterID		string 	`json:"voterID"`
 	Salt 		string 	`json:"salt"`
 	VoteHash 	string 	`json:"voteHash"`
-	SaltHash	string  `json:"saltHash"`
 
 }
 
@@ -59,6 +58,8 @@ func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response 
 		return vc.initVote(stub, args)
 	case "getVote":
 		return vc.getVote(stub, args)
+	case "getVotePrivateDetails":
+		return vc.getVotePrivateDetails(stub, args)
 	case "changeVote":
 		return vc.changeVote(stub, args)
 	case "queryVotesByPoll":							// parametrized rich query w/ poll ID
@@ -86,7 +87,6 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		VoterAge	int 	`json:"voterAge"`
 		Salt 		string 	`json:"salt"`
 		VoteHash 	string 	`json:"voteHash"`
-		SaltHash 	string 	`json:"saltHash"`
 	}
 
 	fmt.Println("- start init vote")
@@ -134,16 +134,12 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		return shim.Error("sex field must be a non-empty string")
 	} 
 
-	if voteInput.Salt <= 0 {
+	if len(voteInput.Salt) == 0 {
 		return shim.Error("salt must be > 0")
 	}
 
 	if len(voteInput.VoteHash) == 0 {
 		return shim.Error("vote hash field must be a non-empty string")
-	} 
-
-	if len(voteInput.SaltHash) == 0 {
-		return shim.Error("salted vote hash field must be a non-empty string")
 	} 
 
 	existingVoteAsBytes, err := stub.GetPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID)
@@ -177,14 +173,16 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		VoterID: voteInput.VoterID,
 		Salt: voteInput.Salt,
 		VoteHash: voteInput.VoteHash,
-		SaltHash: voteInput.SaltHash,
 	}
 	votePrivateDetailsBytes, err := json.Marshal(votePrivateDetails)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
 
-	err = stub.PutPrivateData("collectionVotePrivateDetails", voteInput.PollID + voteInput.VoterID, votePrivateDetailsBytes)
+	err = stub.PutPrivateData(
+		"collectionVotePrivateDetails", 
+		voteInput.PollID + voteInput.VoterID + voteInput.Salt, 
+		votePrivateDetailsBytes)
 	if err != nil {
 		return shim.Error(err.Error())
 	}

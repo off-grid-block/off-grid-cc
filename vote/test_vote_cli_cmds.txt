@@ -1,0 +1,16 @@
+
+initVote() -----------------------------------------------
+
+export VOTE=$(echo -n "{\"pollID\":\"pollid1\",\"voterID\":\"voterid1\",\"voterSex\":\"m\",\"voterAge\":21,\"salt\":\"1234\",\"voteHash\":\"hash1\"}" | base64 | tr -d \\n)
+
+peer chaincode invoke -o orderer.example.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C mychannel -n marblesp -c '{"Args":["initVote"]}'  --transient "{\"vote\":\"$VOTE\"}"
+
+
+getVote() ------------------------------------------------
+
+peer chaincode query -C mychannel -n marblesp -c '{"Args":["getVote","pollid1voterid1"]}'
+
+
+getVotePrivateDetails() ----------------------------------
+
+peer chaincode query -C mychannel -n marblesp -c '{"Args":["getVotePrivateDetails","pollid1voterid11234"]}'
