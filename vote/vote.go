@@ -60,8 +60,8 @@ func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response 
 		return vc.getVote(stub, args)
 	case "getVotePrivateDetails":
 		return vc.getVotePrivateDetails(stub, args)
-	case "changeVote":
-		return vc.changeVote(stub, args)
+	case "amendVote":
+		return vc.amendVote(stub, args)
 	case "queryVotesByPoll":							// parametrized rich query w/ poll ID
 		return vc.queryVotesByPoll(stub, args)
 	case "queryVotesByVoter":							// parametrized rich query w/ voter ID
@@ -233,50 +233,74 @@ func (vc *VoteChaincode) getVotePrivateDetails(stub shim.ChaincodeStubInterface,
 }
 
 // =================================================
-// changeVote - replace vote hash with new vote hash
+// amendVote - replace vote hash with new vote hash
 // =================================================
 
-func (vc *VoteChaincode) changeVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func (vc *VoteChaincode) amendVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
-	// if len(args) != 2 {
-	// 	return shim.Error("Incorrect number of arguments. Expecting vote key and new vote hash")		
-	// }
+	if len(args) != 0 {
+		return shim.Error("Incorrect number of arguments. Pass data using transient map")		
+	}
 
-	// fmt.Println("- begin change vote")
+	fmt.Println("- begin amend vote")
 
-	// voteKey := args[0]
-	// newVoteHash := args[1]
+	type amendVoteTransientInput struct {
+		VoteKey string `json:"voteKey"`
+		NewHash string `json:"newHash"`
+	}
 
-	// // ==== retrieve the old vote ====
-	// voteAsBytes, err := stub.GetState(voteKey)
-	// if err != nil {
-	// 	return shim.Error("{\"Error\":\"Failed to get state for " + voteKey + "\"}")
-	// } else if voteAsBytes == nil {
-	// 	return shim.Error("{\"Error\":\"Vote does not exist: " + voteKey + "\"}")
-	// }
+	transMap, err := stub.GetTransient()
+	if err != nil {
+		return shim.Error("Error getting transient: " + err.Error())
+	}
 
-	// // Unmarshal old vote into a new vote object
-	// changedVote := vote{}
-	// err = json.Unmarshal(voteAsBytes, &changedVote)
-	// if err != nil {
-	// 	return shim.Error(err.Error())
-	// }
+	amendVoteJsonBytes, ok := transMap["amend_vote"]
+	if !ok {
+		return shim.Error("amend_vote must be key in transient map")
+	}
 
-	// // update new vote object's hash to new hash
-	// changedVote.VoteHash = newVoteHash
+	if len(amendVoteJsonBytes) == 0 {
+		return shim.Error("amend_vote value in transient map must be non-empty")
+	}
 
-	// changedVoteJSONasBytes, err := json.Marshal(changedVote)
-	// if err != nil {
-	// 	return shim.Error(err.Error())
-	// }
+	var amendVoteInput amendVoteTransientInput
+	err = json.Unmarshal(amendVoteJsonBytes, &amendVoteInput)
+	if err != nil {
+		return shim.Error("Failed to decode JSON of: " + string(amendVoteJsonBytes))
+	}
 
-	// err = stub.PutState(voteKey, changedVoteJSONasBytes)
-	// if err != nil {
-	// 	return shim.Error(err.Error())
-	// }
+	if len(amendVoteInput.VoteKey) == 0 {
+		return shim.Error("vote key field must be a non-empty string")
+	}
 
-	// fmt.Println("- end change vote (success)")
-	// return shim.Success(changedVoteJSONasBytes)
+	if len(amendVoteInput.NewHash) == 0 {
+		return shim.Error("New hash field must be a non-empty string")
+	}
+
+	voteAsBytes, err := stub.GetPrivateData("collectionVotePrivateDetails", amendVoteInput.VoteKey)
+	if err != nil {
+		return shim.Error("Failed to get private vote data:" + err.Error())
+	} else if voteAsBytes == nil {
+		return shim.Error("Vote does not exist: " + amendVoteInput.VoteKey)
+	}
+
+	amendedVote := votePrivateDetails{}
+	err = json.Unmarshal(voteAsBytes, &amendedVote)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	amendedVote.VoteHash = amendVoteInput.NewHash
+
+	voteJSONasBytes, _ := json.Marshal(amendedVote)
+	err = stub.PutPrivateData(
+		"collectionVotePrivateDetails", 
+		amendedVote.PollID + amendedVote.VoterID + amendedVote.Salt,
+		voteJSONasBytes)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	fmt.Println("- end amend vote (success)")
 	return shim.Success(nil)
 }
 
