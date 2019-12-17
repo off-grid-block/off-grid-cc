@@ -187,6 +187,12 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		return shim.Error(err.Error())
 	}
 
+	//register event
+	err = stub.SetEvent("initEvent", []byte{})
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
 	fmt.Println("- end init vote (success)")
 	return shim.Success(nil)
 }
