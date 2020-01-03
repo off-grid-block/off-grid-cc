@@ -1,4 +1,4 @@
-# off-grid-cc
+# DEON cc
 
 This repository contains chaincode for the DEON project.
 
