@@ -1,19 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
+	"bytes"
 	"encoding/json"
+	"encoding/gob"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	"github.com/hyperledger/fabric/protos/peer"
 )
-
-
-type VoteChaincode struct {
-}
-
 
 type vote struct {
 	ObjectType 	string 	`json:"docType"`
@@ -29,56 +25,12 @@ type votePrivateDetails struct {
 	VoterID		string 	`json:"voterID"`
 	Salt 		string 	`json:"salt"`
 	VoteHash 	string 	`json:"voteHash"`
-
-}
-
-func main() {
-	err := shim.Start(new(VoteChaincode))
-	if err != nil {
-		fmt.Printf("Error starting Vote chaincode: %s", err)
-	}
-}
-
-// ============================
-// Init - initializes chaincode
-// ============================
-func (vc *VoteChaincode) Init(stub shim.ChaincodeStubInterface) peer.Response {
-	return shim.Success(nil)
-}
-
-// =================================================
-// Invoke - starting point for chaincode invocations
-// =================================================
-func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
-	fn, args := stub.GetFunctionAndParameters()
-	fmt.Println("invoke is running " + fn)
-
-	switch fn {
-	case "initVote":
-		return vc.initVote(stub, args)
-	case "getVote":
-		return vc.getVote(stub, args)
-	case "getVotePrivateDetails":
-		return vc.getVotePrivateDetails(stub, args)
-	case "amendVote":
-		return vc.amendVote(stub, args)
-	case "queryVotesByPoll":							// parametrized rich query w/ poll ID
-		return vc.queryVotesByPoll(stub, args)
-	case "queryVotesByVoter":							// parametrized rich query w/ voter ID
-		return vc.queryVotesByVoter(stub, args)			
-	case "queryVotes":									// ad hoc rich query
-		return vc.queryVotes(stub, args)
-	}
-
-	fmt.Println("invoke did not find fn: " + fn)
-	return shim.Error("Received unknown function invocation")
 }
 
 // ============================================================
 // initVote - create a new vote and store into chaincode state
 // ============================================================
 func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-
 
 	type voteTransientInput struct {
 		PollID		string 	`json:"pollID"`
@@ -90,7 +42,6 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 	}
 
 	fmt.Println("- start init vote")
-
 
 	if len(args) != 0 {
 		return shim.Error("Private data should be passed in transient map.")
@@ -140,9 +91,42 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 
 	if len(voteInput.VoteHash) == 0 {
 		return shim.Error("vote hash field must be a non-empty string")
-	} 
+	}
 
-	existingVoteAsBytes, err := stub.GetPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID)
+	var p poll
+
+	existingPollAsBytes, err := stub.GetPrivateData("collectionPoll", voteInput.PollID)
+	if err != nil {
+		return shim.Error("Failed to get associated poll: " + err.Error())
+	} else if existingPollAsBytes == nil {
+		return shim.Error("Poll does not exist: " + voteInput.PollID)
+	}
+
+	err = json.Unmarshal(existingPollAsBytes, &p)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	// Increment num votes of poll
+	p.NumVotes++
+	pollJSONasBytes, err := json.Marshal(p)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+	err = stub.PutPrivateData("collectionPoll", voteInput.PollID, pollJSONasBytes)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	// create a composite key for vote collection using the poll ID and voter ID
+	attrVoteCompositeKey := []string{voteInput.PollID, voteInput.VoterID}
+	voteCompositeKey, err := stub.CreateCompositeKey("vote", attrVoteCompositeKey)
+	if err != nil {
+		return shim.Error("Failed to create composite key for vote: " + err.Error())
+	}
+
+	// check if value for voteCompositeKey already exists
+	existingVoteAsBytes, err := stub.GetPrivateData("collectionVote", voteCompositeKey)
 	if err != nil {
 		return shim.Error("Failed to get vote: " + err.Error())
 	} else if existingVoteAsBytes != nil {
@@ -162,9 +146,17 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		return shim.Error(err.Error())
 	}
 
-	err = stub.PutPrivateData("collectionVote", voteInput.PollID + voteInput.VoterID, voteJSONasBytes)
+	// put state for voteCompositeKey
+	err = stub.PutPrivateData("collectionVote", voteCompositeKey, voteJSONasBytes)
 	if err != nil {
 		return shim.Error(err.Error())
+	}
+
+	// create a composite key for vote private details collections using the poll ID, voter ID, and salt
+	attrVotePrivateDetailsCompositeKey := []string{voteInput.PollID, voteInput.VoterID, voteInput.Salt}
+	votePrivateDetailsCompositeKey, err := stub.CreateCompositeKey("vote", attrVotePrivateDetailsCompositeKey)
+	if err != nil {
+		return shim.Error("Failed to create composite key for vote private details: " + err.Error())
 	}
 
 	votePrivateDetails := &votePrivateDetails {
@@ -179,10 +171,8 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 		return shim.Error(err.Error())
 	}
 
-	err = stub.PutPrivateData(
-		"collectionVotePrivateDetails", 
-		voteInput.PollID + voteInput.VoterID + voteInput.Salt, 
-		votePrivateDetailsBytes)
+	// put state for votePrivateDetailsCompositeKey
+	err = stub.PutPrivateData("collectionVotePrivateDetails", votePrivateDetailsCompositeKey, votePrivateDetailsBytes)
 	if err != nil {
 		return shim.Error(err.Error())
 	}
@@ -202,11 +192,15 @@ func (vc *VoteChaincode) initVote(stub shim.ChaincodeStubInterface, args []strin
 // =====================================================
 
 func (vc *VoteChaincode) getVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-	if len(args) != 1 {
-		return shim.Error("Incorrect number of arguments. Expecting vote key to query")
+	if len(args) != 2 {
+		return shim.Error("Incorrect number of arguments. Expecting poll ID and voter ID to query")
 	}
 
-	voteKey := args[0]
+	voteKey, err := stub.CreateCompositeKey("vote", args)
+	if err != nil {
+		return shim.Error("Failed to create composite key in getVote(): " + err.Error())
+	}
+
 	// ==== retrieve the vote ====
 	voteAsBytes, err := stub.GetPrivateData("collectionVote", voteKey)
 	if err != nil {
@@ -218,29 +212,77 @@ func (vc *VoteChaincode) getVote(stub shim.ChaincodeStubInterface, args []string
 	return shim.Success(voteAsBytes)
 }
 
-// ===============================================================
-// getVotePrivateDetails - retrieve vote hash from chaincode state
-// ===============================================================
+// ==========================================================================
+// getVotePrivateDetails - retrieve vote private details from chaincode state
+// ==========================================================================
 
 func (vc *VoteChaincode) getVotePrivateDetails(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-	if len(args) != 1 {
-		return shim.Error("Incorrect number of arguments. Expecting vote key to query")
+	if len(args) != 2 {
+		return shim.Error("Incorrect number of arguments. Expecting poll ID and voter ID to query")
 	}
 
-	voteKey := args[0]
-	voteAsBytes, err := stub.GetPrivateData("collectionVotePrivateDetails", voteKey)
+	iterator, err := stub.GetPrivateDataByPartialCompositeKey("collectionVotePrivateDetails", "vote", args)
 	if err != nil {
-		return shim.Error("{\"Error\":\"Failed to get private details for " + voteKey + "\"}")
+		return shim.Error("{\"Error\":\"Failed to get private details by partial composite key\"}")
+	} else if iterator == nil {
+		return shim.Error("{\"Error\":\"Vote private details with partial composite key do not exist\"}")
+	}
+
+	defer iterator.Close()
+
+	kv, err := iterator.Next()
+	if err != nil {
+		return shim.Error("Failed to iterate over iterator: " + err.Error())
+	}
+	privateDetailsKey := kv.GetKey()
+
+	voteAsBytes, err := stub.GetPrivateData("collectionVotePrivateDetails", privateDetailsKey)
+	if err != nil {
+		return shim.Error("{\"Error\":\"Failed to get state for " + privateDetailsKey + "\"}")
 	} else if voteAsBytes == nil {
-		return shim.Error("{\"Error\":\"Vote private details do not exist: " + voteKey + "\"}")
+		return shim.Error("{\"Error\":\"Vote does not exist: " + privateDetailsKey + "\"}")
 	}
 
 	return shim.Success(voteAsBytes)
 }
 
-// =================================================
+// ==============================================================
+// getVotePrivateDetailsHash - retrieve hash of value from ledger
+// ==============================================================
+
+func (vc *VoteChaincode) getVotePrivateDetailsHash(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	if len(args) != 2 {
+		return shim.Error("Incorrect number of arguments. Expecting vote key to query")
+	}
+
+	iterator, err := stub.GetPrivateDataByPartialCompositeKey("collectionVotePrivateDetails", "vote", args)
+	if err != nil {
+		return shim.Error("{\"Error\":\"Failed to get private details by partial composite key\"}")
+	} else if iterator == nil {
+		return shim.Error("{\"Error\":\"Vote private details with partial composite key do not exist\"}")
+	}
+
+	defer iterator.Close()
+
+	kv, err := iterator.Next()
+	if err != nil {
+		return shim.Error("Failed to iterate over iterator: " + err.Error())
+	}
+	privateDetailsKey := kv.GetKey()
+
+	voteHashAsBytes, err := stub.GetPrivateDataHash("collectionVotePrivateDetails", privateDetailsKey)
+	if err != nil {
+		return shim.Error("{\"Error\":\"Failed to get private data hash for " + privateDetailsKey + "\"}")
+	} else if voteHashAsBytes == nil {
+		return shim.Error("{\"Error\":\"Vote private data does not exist: " + privateDetailsKey + "\"}")
+	}
+
+	return shim.Success(voteHashAsBytes)
+}
+
+// ================================================
 // amendVote - replace vote hash with new vote hash
-// =================================================
+// ================================================
 
 func (vc *VoteChaincode) amendVote(stub shim.ChaincodeStubInterface, args []string) peer.Response {
 
@@ -310,66 +352,55 @@ func (vc *VoteChaincode) amendVote(stub shim.ChaincodeStubInterface, args []stri
 	return shim.Success(nil)
 }
 
-// ===========================================================================================
-// Taken from fabric-samples/marbles_chaincode.go.
-// constructQueryResponseFromIterator constructs a JSON array containing query results from
-// a given result iterator
-// ===========================================================================================
-func constructQueryResponseFromIterator(resultsIterator shim.StateQueryIteratorInterface) (*bytes.Buffer, error) {
-	// buffer is a JSON array containing QueryResults
-	var buffer bytes.Buffer
-	buffer.WriteString("[")
+// ===================================================================
+// getVotePrivateDetailsByPoll - retrieve vote private details by poll
+// ===================================================================
 
-	bArrayMemberAlreadyWritten := false
-	for resultsIterator.HasNext() {
-		queryResponse, err := resultsIterator.Next()
+func (vc *VoteChaincode) queryVotePrivateDetailsByPoll(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+	if len(args) != 1 {
+		return shim.Error("Incorrect number of arguments. Expecting poll ID")
+	}
+
+	iterator, err := stub.GetPrivateDataByPartialCompositeKey("collectionVotePrivateDetails", "vote", args)
+	if err != nil {
+		return shim.Error("{\"Error\":\"Failed to get private details by partial composite key\"}")
+	} else if iterator == nil {
+		return shim.Error("{\"Error\":\"Vote private details with partial composite key do not exist\"}")
+	}
+	defer iterator.Close()
+
+	// populate an array of strings with the hashes of the votes
+	var hashes []string
+	// hashes := []string{}
+
+	for iterator.HasNext() {
+		kv, err := iterator.Next()
 		if err != nil {
-			return nil, err
+			return shim.Error("Failed to iterate over iterator: " + err.Error())
 		}
-		// Add a comma before array members, suppress it for the first array member
-		if bArrayMemberAlreadyWritten == true {
-			buffer.WriteString(",")
-		}
-		buffer.WriteString("{\"Key\":")
-		buffer.WriteString("\"")
-		buffer.WriteString(queryResponse.Key)
-		buffer.WriteString("\"")
 
-		buffer.WriteString(", \"Record\":")
-		// Record is a JSON object, so we write as-is
-		buffer.WriteString(string(queryResponse.Value))
-		buffer.WriteString("}")
-		bArrayMemberAlreadyWritten = true
+		var v votePrivateDetails
+
+		err = json.Unmarshal(kv.GetValue(), &v)
+		if err != nil {
+			return shim.Error("Failed to unmarshal vote private details: " + err.Error())
+		}
+		hashes = append(hashes, v.VoteHash)
 	}
-	buffer.WriteString("]")
 
-	return &buffer, nil
+	// encode []string into []byte
+	var hashesBuf bytes.Buffer
+
+	enc := gob.NewEncoder(&hashesBuf)
+	err = enc.Encode(hashes)
+	if err != nil {
+		return shim.Error("Error during byte encoding of hashes: " + err.Error())
+	}
+
+	return shim.Success(hashesBuf.Bytes())
 }
 
-// =========================================================================================
-// Taken from fabric-samples/marbles_chaincode.go.
-// getQueryResultForQueryString executes the passed in query string.
-// Result set is built and returned as a byte array containing the JSON results.
-// =========================================================================================
-func getQueryResultForQueryString(stub shim.ChaincodeStubInterface, queryString string) ([]byte, error) {
 
-	fmt.Printf("- getQueryResultForQueryString queryString:\n%s\n", queryString)
-
-	resultsIterator, err := stub.GetPrivateDataQueryResult("collectionVote", queryString)
-	if err != nil {
-		return nil, err
-	}
-	defer resultsIterator.Close()
-
-	buffer, err := constructQueryResponseFromIterator(resultsIterator)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Printf("- getQueryResultForQueryString queryResult:\n%s\n", buffer.String())
-
-	return buffer.Bytes(), nil
-}
 
 // ===== Parametrized rich queries =========================================================
 
@@ -393,7 +424,7 @@ func (vc *VoteChaincode) queryVotesByPoll(stub shim.ChaincodeStubInterface, args
 }
 
 // =========================================================================================
-// queryVotesByPoll takes the voter ID as a parameter, builds a query string using
+// queryVotesByVoter takes the voter ID as a parameter, builds a query string using
 // the passed voter ID, executes the query, and returns the result set.
 // =========================================================================================	
 func (vc *VoteChaincode) queryVotesByVoter(stub shim.ChaincodeStubInterface, args []string) peer.Response {

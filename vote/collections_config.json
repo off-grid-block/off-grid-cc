@@ -16,5 +16,23 @@
        "maxPeerCount": 3,
        "blockToLive":3,
        "memberOnlyRead": true
-  }
+  },
+
+  {
+       "name": "collectionPoll",
+       "policy": "OR('Org1MSP.member', 'Org2MSP.member')",
+       "requiredPeerCount": 0,
+       "maxPeerCount": 3,
+       "blockToLive":1000000,
+       "memberOnlyRead": true
+  },
+
+  {
+       "name": "collectionPollPrivateDetails",
+       "policy": "OR('Org1MSP.member')",
+       "requiredPeerCount": 0,
+       "maxPeerCount": 3,
+       "blockToLive":3,
+       "memberOnlyRead": true
+  },
 ]
