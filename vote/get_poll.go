@@ -22,7 +22,7 @@ func (vc *VoteChaincode) getPoll(stub shim.ChaincodeStubInterface, args []string
 	if err != nil {
 		return shim.Error("{\"Error\":\"Failed to get state for " + pollID + "\"}")
 	} else if pollAsBytes == nil {
-		return shim.Error("{\"Error\":\"Vote does not exist: " + pollID + "\"}")
+		return shim.Error("{\"Error\":\"Poll does not exist: " + pollID + "\"}")
 	}
 
 	return shim.Success(pollAsBytes)
