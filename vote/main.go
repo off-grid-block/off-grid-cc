@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"bytes"
+        "encoding/json"
+
 		
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 	"github.com/hyperledger/fabric/protos/peer"
+	 "tcs.com/proofverify"
 )
 
 
@@ -67,6 +70,23 @@ func (vc *VoteChaincode) Init(stub shim.ChaincodeStubInterface) peer.Response {
 func (vc *VoteChaincode) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
 	fn, args := stub.GetFunctionAndParameters()
 	fmt.Println("invoke is running " + fn)
+
+/////////////////////////
+        indycreatorbytes, _ := stub.GetCreator()
+        type IndyCreator struct {
+                Did string
+        }
+        indycreator := &IndyCreator{}
+        if err := json.Unmarshal(indycreatorbytes, &indycreator); err != nil {
+                panic(err)
+        }
+        fmt.Println("Indy Creator!!!: ", indycreator)
+        status, err := proofverify.VerifyVoterProof(indycreator.Did)
+        if status == false || err != nil {
+                return shim.Error("Proof verification failed : " + err.Error())
+        }
+        fmt.Println("proof verification success")
+//////////////////////
 
 	switch fn {
 	case "initVote":
